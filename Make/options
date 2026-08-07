@@ -17,7 +17,6 @@ EXE_INC = -w \
     -I$(SPACK_MUI_PATH)/MUI-2.0.0/include \
     -I$(SPACK_MPI_PATH)/include \
     -lmpi \
-    -lmpi_cxx \
     -lOpenFOAM \
     -lcompressibleTransportModels \
     -lfiniteVolume \
