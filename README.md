@@ -56,3 +56,24 @@ To add the patch type to 0/T use the following format:
     value           uniform 273.15;
 }
 ```
+
+Values are fetched from the other solver with a MUI spatial sampler. The default is linear interpolation between the two nearest points (`pseudo_n2_linear`, search radius 0.2). To use radial basis function interpolation instead, add the optional entries below to the patch:
+```
+<patchName>
+{   
+    type            DirichletCoupledBoundary;
+    kappaMethod     solidThermo;
+    value           uniform 273.15;
+    spatialSampler  rbf;        // pseudo_n2_linear (default) or rbf
+    rbfRadius       0.3;        // RBF search radius
+    rbfBasis        0;          // 0 Gaussian (default), 1-4 Wendland C0, C2, C4, C6
+}
+```
+The patch face centres are passed to the RBF sampler when the boundary is constructed, since MUI requires its fetch points up front. Gaussian with a radius of 0.3 was the most stable setting in testing.
+
+Things to be aware of with `rbf`:
+- It is used in consistent mode (values are reproduced, not their total), which suits temperature.
+- No MPI communicator is passed to the sampler. It has been run with up to 4 fluid processes (caseC).
+- As with the other samplers, accuracy is worst at the ends of the interface.
+
+See `heatSolverFEniCSx_OpenFOAM/caseD` in ParaSiF_CHT_Development for a case using `rbf`, and [07-pseudo-diffusion](https://github.com/MxUI/MUI-demo/tree/master/07-pseudo-diffusion) in MUI-demo for a standalone example of the sampler.

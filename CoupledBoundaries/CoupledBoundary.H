@@ -40,7 +40,11 @@ class CoupledBoundary
 // Private data
 private:
     // initialise samplers
-    mui::sampler_pseudo_nearest_neighbor<mui::mui_config> spatial_sampler{0.1};
+    mui::sampler_pseudo_n2_linear<mui::mui_config> spatial_sampler{0.2};
+    std::unique_ptr<mui::sampler_rbf<mui::mui_config>> rbf_sampler;
+    word sampler_name = "pseudo_n2_linear";
+    scalar rbf_radius = 0.3;
+    label rbf_basis = 0;
     mui::temporal_sampler_linear<mui::mui_config> temporal_sampler;
 
     // push and fetch points
@@ -116,6 +120,34 @@ public:
                 std::vector<std::string> ifsName;
                 ifsName.emplace_back("CoupledBoundary");
                 mui_ifs=mui::create_uniface<mui::mui_config>( "OpenFOAM", ifsName, interface_ranks);
+
+                sampler_name = dict.getOrDefault<word>("spatialSampler", "pseudo_n2_linear");
+                rbf_radius = dict.getOrDefault<scalar>("rbfRadius", 0.3);
+                rbf_basis = dict.getOrDefault<label>("rbfBasis", 0);
+                if (sampler_name == "rbf")
+                {
+                    // RBF needs fetch points up front
+                    std::vector<mui::point3d> pts;
+                    const vectorField& Cf = p.Cf();
+                    forAll(Cf, faceI)
+                    {
+                        mui::point3d pt;
+                        pt[0] = round_to(Cf[faceI].x(), 8);
+                        pt[1] = round_to(Cf[faceI].y(), 8);
+                        pt[2] = round_to(Cf[faceI].z(), 8);
+                        pts.push_back(pt);
+                    }
+                    rbf_sampler = std::make_unique<mui::sampler_rbf<mui::mui_config>>
+                    (
+                        rbf_radius, pts, rbf_basis
+                    );
+                }
+                else if (sampler_name != "pseudo_n2_linear")
+                {
+                    FatalIOErrorInFunction(dict)
+                        << "Unknown spatialSampler " << sampler_name
+                        << ", use pseudo_n2_linear or rbf" << exit(FatalIOError);
+                }
             }
             
             this->readValueEntry(dict, IOobjectOption::MUST_READ);
@@ -247,7 +279,9 @@ public:
             fetch_point[1] = round_to(y, 8);
             fetch_point[2] = round_to(z, 8);
 
-            scalar fetch_val = mui_ifs[0]->fetch(fetch_key, fetch_point, iteration, spatial_sampler, temporal_sampler);
+            scalar fetch_val = rbf_sampler
+                ? mui_ifs[0]->fetch(fetch_key, fetch_point, iteration, *rbf_sampler, temporal_sampler)
+                : mui_ifs[0]->fetch(fetch_key, fetch_point, iteration, spatial_sampler, temporal_sampler);
 
             return fetch_val;
         }
@@ -278,6 +312,12 @@ public:
         {
             mixedFvPatchField<scalar>::write(os);
             temperatureCoupledBase::write(os);
+            if (sampler_name == "rbf")
+            {
+                os.writeEntry("spatialSampler", sampler_name);
+                os.writeEntry("rbfRadius", rbf_radius);
+                os.writeEntry("rbfBasis", rbf_basis);
+            }
         }
 
 };
